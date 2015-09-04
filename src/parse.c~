@@ -1,0 +1,165 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <sys/param.h>
+#include <string.h>
+#include <strings.h>
+#include <ctype.h>
+
+#define MAXTOKENLEN 512
+#define TOKENSTACKSIZE 1024
+
+enum type_tag {
+    FUNCTION,
+    ADDRESS,
+    NUMBER,
+    VALUE,
+    STRING,
+    INVALID,
+};
+
+struct token {
+    char type;
+    char string[MAXTOKENLEN];
+    size_t valuelen;
+    void *value;
+};
+
+struct token token_stack[TOKENSTACKSIZ];
+
+void
+parse_error(const char *info) {
+    fprintf(stderr, "Parse ERROR: %s!!!\n", info);
+    exit(1);
+}
+
+int
+validate_num(char *str)
+{
+    while(isdigit(*str++));
+    if(*str != '\0') return 0;
+    return 1;
+}
+
+int
+validate_quoted_string(char *str)
+{
+    while(*str++ != '"' || *str++ != '\0');
+    if (*str == '\0') return 0;
+    return 1;
+}
+
+int
+parse_ip6_str(struct token *tok)
+{
+    size_t count;
+    
+get_nums:
+    count = 0;
+    while (isdigit(*str)) {++count; ++str;}
+    if (*str == ':' && count <= 4) goto get_nums;
+    else if(*str != '\0')  parse_error("bad ipv6 address");
+    tok.valuelen = sizeof(struct in6_addr);
+    tok.value = malloc(sizeof(struct in6_addr));
+    
+    if (inet_pton(AF_INET6, tok.string, tok.value) <= 0)
+	parse_error("bad ipv6 addresss");
+    return 1;
+}
+
+
+int
+parse_ip4_str(struct token *tok)
+{
+    size_t count;
+    size_t octet_ct = 0;
+    unsigned char octets[4];
+    char buf[3];
+get_nums:
+    count =0;
+    while (isdigit(*str)) {
+	buf[count] = *str;
+	++count;
+	++str;
+    }
+    if (*str == '.' && count <= 3) {
+	octets[octet_ct] = (unsigned char)atoi(buf);
+	if (octets[octet_ct] > 255)
+	    parse_error("bad octets for ipv4 address");
+	
+	goto get_nums;
+    } else if(*str == '\0') {
+	tok.valuelen = sizeof(in_addr);
+	tok.value = malloc(sizeof(struct in_addr));
+	memcpy(tok.value, octets, sizeof(struct in_addr));
+    }
+    return 0;
+}
+
+int
+parse_num(struct token *tok)
+{
+    size_t count;
+    char *str = tok.string;
+    
+    while(isdigit(*str++)) ++count;
+    if (*str == ':') return parse_ip6_str(tok);
+    if (*str == '.') return parse_ip4_str(tok);
+    if (*str == '\0') {
+	char *endptr;
+	tok.type = NUMBER;
+	tok.valuelen = sizeof(int);
+	tok.value = malloc(sizeof(int));
+	*((int *) tok->value) = strtol(s &endptr, 10);
+	if (endptr != '\0') return 0;
+    }
+    return 0;
+}
+
+int
+parse_token(struct token *tok)
+{
+    char *s = tok.string;
+    
+    
+    if (isdigit(*s)) {
+	return parse_num(tok);
+    } else if (*s == '"' && validate_quoted_string(s)) {
+	tok->type = STRING;
+	tok->valuelen = 0;
+	tok->value = NULL;
+    } else {
+	parse_error("can't do this: %s\n", s);
+    }
+}
+
+
+void
+get_word(char **start, char **end)
+{
+    char *ptr = *start, *endptr = *end;
+    
+    while(isspace(*ptr++));
+    ptr--;
+    endptr = ptr;
+    while(!isspace(*endptr++));
+    --endptr;
+    
+    *end = endptr;
+    *start = ptr;
+}
+
+
+#define BUFLEN 256
+int
+main(int argc, char **argv)
+{
+    char buf[BUFLEN];
+    fprintf(stdout, "token > ");
+    while (fgets(buf, BUFLEN, stdin) != NULL) {
+	parse_token(tok);
+    }
+    return 0;
+}
